@@ -1,0 +1,499 @@
+openapi: 3.0.3
+info:
+  title: Teamly Secure Task Management API
+  description: Production-grade REST API for secure team task management with isolated workspaces, explicit RBAC, and verified workflows.
+  version: 1.0.0
+servers:
+  - url: /api/v1
+    description: Current API Version (v1)
+
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                name:
+                  type: string
+                  example: Alex Doe
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: SecurePass123
+      responses:
+        201:
+          description: User registered and session created
+        400:
+          description: Validation error
+        409:
+          description: Account already exists
+        429:
+          description: Rate limit exceeded
+
+  /auth/login:
+    post:
+      summary: Authenticate with email and password
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        200:
+          description: Successfully authenticated
+        401:
+          description: Invalid email or password
+        429:
+          description: Rate limit exceeded
+
+  /auth/logout:
+    post:
+      summary: Invalidate current session
+      tags: [Authentication]
+      responses:
+        200:
+          description: Successfully logged out
+
+  /me:
+    get:
+      summary: Get current authenticated user details and workspaces
+      tags: [User]
+      responses:
+        200:
+          description: Authenticated user profile and workspace memberships
+        401:
+          description: Unauthorized
+
+  /workspaces:
+    get:
+      summary: List user workspaces
+      tags: [Workspaces]
+      responses:
+        200:
+          description: List of accessible workspaces
+        401:
+          description: Unauthorized
+    post:
+      summary: Create a new workspace
+      tags: [Workspaces]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                  example: Engineering Core
+      responses:
+        201:
+          description: Workspace created
+        400:
+          description: Validation error
+        401:
+          description: Unauthorized
+
+  /workspaces/{workspaceId}:
+    get:
+      summary: Retrieve workspace details
+      tags: [Workspaces]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Workspace retrieved
+        404:
+          description: Workspace not found
+    patch:
+      summary: Update workspace name (Owner only)
+      tags: [Workspaces]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        200:
+          description: Workspace updated
+        403:
+          description: Forbidden
+        404:
+          description: Not found
+    delete:
+      summary: Delete workspace (Owner only)
+      tags: [Workspaces]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Workspace deleted
+        403:
+          description: Forbidden
+
+  /workspaces/{workspaceId}/members:
+    get:
+      summary: List workspace members
+      tags: [Members]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: List of members
+
+  /workspaces/{workspaceId}/members/{userId}:
+    patch:
+      summary: Update member role
+      tags: [Members]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [owner, admin, member, viewer]
+      responses:
+        200:
+          description: Member role updated
+        403:
+          description: Forbidden (cannot demote sole owner or insufficient permissions)
+    delete:
+      summary: Remove member or leave workspace
+      tags: [Members]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Member removed
+
+  /workspaces/{workspaceId}/invitations:
+    get:
+      summary: List pending invitations (Owner/Admin)
+      tags: [Invitations]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Pending invitations
+    post:
+      summary: Invite a new member
+      tags: [Invitations]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [admin, member, viewer]
+      responses:
+        201:
+          description: Invitation generated
+        409:
+          description: Already a member
+
+  /invitations/accept:
+    post:
+      summary: Accept an invitation
+      tags: [Invitations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        200:
+          description: Invitation accepted
+
+  /workspaces/{workspaceId}/tasks:
+    get:
+      summary: List and filter tasks
+      tags: [Tasks]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [todo, in_progress, blocked, done]
+        - in: query
+          name: priority
+          schema:
+            type: string
+            enum: [low, medium, high, urgent]
+        - in: query
+          name: assigneeId
+          schema:
+            type: string
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            enum: [createdAt, dueAt, priority, status, title]
+        - in: query
+          name: sortOrder
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        200:
+          description: Paginated tasks list
+    post:
+      summary: Create a new task
+      tags: [Tasks]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: [todo, in_progress, blocked, done]
+                priority:
+                  type: string
+                  enum: [low, medium, high, urgent]
+                assigneeId:
+                  type: string
+                  nullable: true
+                dueAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+      responses:
+        201:
+          description: Task created
+        403:
+          description: Viewers cannot create tasks
+        422:
+          description: Assignee not member of workspace
+
+  /workspaces/{workspaceId}/tasks/{taskId}:
+    get:
+      summary: Retrieve task details
+      tags: [Tasks]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: taskId
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Task details
+        404:
+          description: Task not found
+    patch:
+      summary: Update task
+      tags: [Tasks]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: taskId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                status:
+                  type: string
+                  enum: [todo, in_progress, blocked, done]
+                priority:
+                  type: string
+                  enum: [low, medium, high, urgent]
+                assigneeId:
+                  type: string
+                  nullable: true
+                dueAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+      responses:
+        200:
+          description: Task updated
+        403:
+          description: Forbidden (member can only edit owned/assigned tasks)
+        422:
+          description: Assignee not member of workspace
+    delete:
+      summary: Delete task
+      tags: [Tasks]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: taskId
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Task deleted
+        403:
+          description: Forbidden
+
+  /workspaces/{workspaceId}/tasks/{taskId}/activity:
+    get:
+      summary: Retrieve task audit history
+      tags: [Audit]
+      parameters:
+        - in: path
+          name: workspaceId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: taskId
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Task audit trail
+
